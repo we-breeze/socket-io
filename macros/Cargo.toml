@@ -1,0 +1,15 @@
+[package]
+name = "brz-socket-io-macros"
+version = "0.0.1"
+edition = "2024"
+rust-version = "1.94"
+description = "Namespace and event exports for brz-socket-io"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/we-breeze/socket-io"
+[lib]
+proc-macro = true
+[dependencies]
+proc-macro-crate = "3"
+proc-macro2 = "1"
+quote = "1"
+syn = { version = "2", features = ["full"] }

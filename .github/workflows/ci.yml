@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: socket-io
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 2s
+          --health-retries 10
+    env:
+      BRZ_SOCKET_IO_TEST_REDIS_URL: redis://127.0.0.1:6379
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          path: socket-io
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - run: cargo fmt --all -- --check
+      - run: cargo test --locked --no-default-features
+      - run: cargo test --locked --all-features
+      - run: cargo clippy --locked --all-features --all-targets -- -D warnings
+      - run: cargo package --workspace --locked --all-features --allow-dirty
+      - run: npm ci --prefix tests/client --ignore-scripts
+      - name: Official client interoperability
+        shell: bash
+        run: |
+          cargo build --locked --example echo
+          ./target/debug/examples/echo &
+          server_pid=$!
+          trap 'kill -INT "$server_pid"; wait "$server_pid"' EXIT
+          npm test --prefix tests/client
+
+      - name: Shared HTTP listener interoperability
+        shell: bash
+        run: |
+          cargo build --locked --features macros --example http
+          ./target/debug/examples/http &
+          server_pid=$!
+          trap 'kill -INT "$server_pid"; wait "$server_pid"' EXIT
+          SOCKET_IO_TEST_PATH=/realtime SOCKET_IO_TEST_NAMESPACE=/chat SOCKET_IO_TEST_ACK_PREFIX=echo: SOCKET_IO_TEST_ACK_ENVELOPE=1 SOCKET_IO_TEST_HTTP_HEALTH=/health npm test --prefix tests/client

@@ -1,0 +1,7 @@
+{
+  "name": "brz-socket-io-client-tests",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node interop.mjs" },
+  "dependencies": { "socket.io-client": "4.8.3" }
+}
