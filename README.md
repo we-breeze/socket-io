@@ -11,7 +11,7 @@ Published releases use crates.io dependencies:
 
 ```toml
 [dependencies]
-brz-socket-io = { version = "=0.0.1", features = ["macros"] }
+brz-socket-io = { version = "=0.0.2", features = ["macros"] }
 ```
 
 ## Services and events
@@ -153,7 +153,16 @@ The framework automatically sends **one** ACK when the client supplied an ACK ID
 ```
 
 This envelope is Breeze policy. Events without ACK IDs do not receive an ACK.
-Return `Reply<T>` only when room changes are needed; successful actions run before
+For an existing client contract that expects the business value directly,
+return `Result<Reply<T>, ClientError>` and construct `Reply::payload(value)`.
+The successful ACK contains exactly one argument with that value, including
+when the value is an array, tuple or null; binary attachments remain supported.
+For example, `Reply::payload(json!({"success": true}))` sends
+`[{"success":true}]` as the ACK arguments. Ordinary `Result<T, E>` and
+`Reply::new` keep the Breeze envelope. `ClientError` still uses the safe error
+envelope; an application-defined error object can be an explicit business value.
+
+`Reply<T>` also declares room changes; successful actions run before
 the optional ACK. Disconnect cleanup prevents late handlers from recreating room
 membership. Each accepted socket also joins its private ID room for addressed
 service emissions. A disconnect hook can read the saved identity/session even
@@ -218,7 +227,7 @@ there is no silent fallback to process-local storage.
 Enable `redis` for the Redis provider:
 
 ```toml
-brz-socket-io = { version = "=0.0.1", features = ["redis"] }
+brz-socket-io = { version = "=0.0.2", features = ["redis"] }
 ```
 
 ```rust,no_run

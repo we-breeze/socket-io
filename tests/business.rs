@@ -119,6 +119,31 @@ async fn binary(
 ) -> Result<serde_bytes::ByteBuf, ClientError> {
     Ok(bytes)
 }
+#[brz_socket_io::event("payload-value", namespace = "/business", group = business)]
+async fn payload_value(#[payload] input: Value) -> Result<Reply<Value>, ClientError> {
+    if input == "deny" {
+        return Err(ClientError::new("FORBIDDEN", "No permission"));
+    }
+    Ok(Reply::payload(input).join("payload-room"))
+}
+#[brz_socket_io::event("payload-binary", namespace = "/business", group = business)]
+async fn payload_binary(
+    #[payload] input: serde_bytes::ByteBuf,
+) -> Result<Reply<serde_bytes::ByteBuf>, ClientError> {
+    Ok(Reply::payload(input))
+}
+#[brz_socket_io::event("payload-default", namespace = "/business", group = business)]
+async fn payload_default() -> Result<Value, ClientError> {
+    Ok(json!({"ordinary": true}))
+}
+#[brz_socket_io::event("payload-tuple", namespace = "/business", group = business)]
+async fn payload_tuple() -> Result<Reply<(u8, bool)>, ClientError> {
+    Ok(Reply::payload((7, true)))
+}
+#[brz_socket_io::event("payload-bad", namespace = "/business", group = business)]
+async fn payload_bad() -> Result<Reply<InvalidSerialization>, ClientError> {
+    Ok(Reply::payload(InvalidSerialization))
+}
 #[brz_socket_io::event("blocked", namespace = "/business", group = business)]
 async fn blocked(
     #[auth] user: &State,
@@ -281,6 +306,80 @@ async fn saved_identity_automatic_ack_fallback_binary_and_room_actions() {
             || key.contains("alice")
             || key.contains("new-room")));
     }
+    running.stop().await;
+}
+
+#[tokio::test]
+async fn payload_reply_keeps_one_argument_rooms_binary_errors_and_ack_metrics() {
+    let app = Arc::new(App::default());
+    let (io, running) = start(&app).await;
+    let mut client = connect(&running, "payload-client").await;
+    let socket = io.of("/business").unwrap().sockets().pop().unwrap();
+    client
+        .send(r#"42/business,1["payload-value","deny"]"#)
+        .await;
+    assert_eq!(
+        data(&client.recv().await),
+        json!({"ok":false,"error":{"code":"FORBIDDEN","message":"No permission"}})
+    );
+    assert!(!socket.rooms().iter().any(|room| &**room == "payload-room"));
+    for (index, value) in [
+        json!({"success":true,"device_id":"synthetic-device"}),
+        json!([1, {"nested":true}]),
+        Value::Null,
+        json!({"error":"business rejection"}),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let id = index + 2;
+        client
+            .send(format!(
+                "42/business,{id}{}",
+                json!(["payload-value", value])
+            ))
+            .await;
+        assert_eq!(
+            client.recv().await,
+            format!("43/business,{id}{}", json!([value]))
+        );
+        assert!(socket.rooms().iter().any(|room| &**room == "payload-room"));
+    }
+    client
+        .send(r#"451-/business,6["payload-binary",{"_placeholder":true,"num":0}]"#)
+        .await;
+    client.binary(vec![0, 1, 2, 255]).await;
+    assert_eq!(
+        client.recv().await,
+        r#"461-/business,6[{"_placeholder":true,"num":0}]"#
+    );
+    assert_eq!(client.recv_binary().await, vec![0, 1, 2, 255]);
+    client.send(r#"42/business,7["payload-tuple"]"#).await;
+    assert_eq!(client.recv().await, r#"43/business,7[[7,true]]"#);
+    client
+        .send(r#"42/business,["payload-value",{"without_ack":true}]"#)
+        .await;
+    client.send(r#"42/business,8["payload-bad"]"#).await;
+    client.send(r#"42/business,9["payload-default"]"#).await;
+    // No ACK request and a serialization failure must not create extra ACKs;
+    // the next frame is the ordinary, unchanged Breeze success envelope.
+    assert_eq!(
+        client.recv().await,
+        r#"43/business,9[{"ok":true,"data":{"ordinary":true}}]"#
+    );
+    #[cfg(feature = "metrics")]
+    {
+        let mut all = std::collections::HashMap::new();
+        brz_metrics::visit(|name, kind, value| {
+            if kind == "SOCKET_IO" {
+                all.insert(name.to_string(), value);
+            }
+        });
+        assert_eq!(all["event:9:/business:13:payload-value:handler"].failure, 1);
+        assert_eq!(all["event:9:/business:13:payload-value:ack"].total, 5);
+        assert_eq!(all["event:9:/business:11:payload-bad:ack"].failure, 1);
+    }
+    client.close().await;
     running.stop().await;
 }
 

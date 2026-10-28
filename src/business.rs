@@ -359,6 +359,7 @@ pub fn complete_event<A: Adapter, T: Serialize>(
     result: Result<Reply<T>, ClientError>,
     metrics: EventMetrics,
 ) {
+    let payload_ack = result.as_ref().is_ok_and(|reply| reply.payload_ack);
     let result = result.and_then(|reply| apply_reply(socket, reply, metrics));
     if !ack.requested {
         if let Err(error) = result {
@@ -368,6 +369,7 @@ pub fn complete_event<A: Adapter, T: Serialize>(
     }
     let observation = metrics.ack.start();
     let sent = match result {
+        Ok(data) if payload_ack => ack.sender.send(&(data,)),
         Ok(data) => ack.sender.send(&Success { ok: true, data }),
         Err(error) => ack.sender.send(&Failure { ok: false, error }),
     };
