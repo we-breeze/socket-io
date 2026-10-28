@@ -76,6 +76,7 @@ impl Default for Accept<()> {
 pub struct Reply<T = ()> {
     pub(crate) data: T,
     pub(crate) rooms: Vec<RoomAction>,
+    pub(crate) payload_ack: bool,
 }
 impl<T> Reply<T> {
     /// Reply with business data.
@@ -83,6 +84,20 @@ impl<T> Reply<T> {
         Self {
             data,
             rooms: Vec::new(),
+            payload_ack: false,
+        }
+    }
+    /// Send the business value as one acknowledgement argument, without the
+    /// Breeze success envelope. Arrays, tuples and null remain one argument.
+    ///
+    /// Room actions and automatic ACK ownership are unchanged. This only
+    /// selects successful reply encoding; [`ClientError`] keeps its safe
+    /// framework error envelope. Events without an ACK ID receive no reply.
+    pub fn payload(data: T) -> Self {
+        Self {
+            data,
+            rooms: Vec::new(),
+            payload_ack: true,
         }
     }
     /// Join a namespace-local room on successful completion.
