@@ -11,7 +11,7 @@ Published releases use crates.io dependencies:
 
 ```toml
 [dependencies]
-brz-socket-io = { version = "=0.0.2", features = ["macros"] }
+brz-socket-io = { version = "=0.0.3", features = ["macros"] }
 ```
 
 ## Services and events
@@ -169,6 +169,15 @@ service emissions. A disconnect hook can read the saved identity/session even
 though framework state and room cleanup have already begun; hook failure does
 not prevent cleanup. Shutdown bounds hook execution with the server deadline.
 
+Use `Reply::after_reply(move || jobs.enqueue(job))` to hand follow-up work to
+an application-owned service after room actions and the optional ACK send attempt.
+This establishes queue ordering before a follow-up emission; it does not wait
+for the transport to flush or for the client to receive or acknowledge anything.
+Callbacks run once in registration order, including without a requested ACK or
+after an ACK send/serialization failure. Business errors and failed room actions
+discard them. Keep these synchronous callbacks nonblocking; the application owns
+the queued work's backpressure, cancellation and shutdown.
+
 Fixed events take priority over the optional namespace fallback. `#[event_name]`
 provides the original event name to the fallback (or a named handler). The
 framework uses the declared fallback identity for metrics, never dynamic event
@@ -227,7 +236,7 @@ there is no silent fallback to process-local storage.
 Enable `redis` for the Redis provider:
 
 ```toml
-brz-socket-io = { version = "=0.0.2", features = ["redis"] }
+brz-socket-io = { version = "=0.0.3", features = ["redis"] }
 ```
 
 ```rust,no_run

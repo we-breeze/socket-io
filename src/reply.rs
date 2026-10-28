@@ -41,6 +41,18 @@ pub(crate) enum RoomAction {
     Leave(String),
 }
 
+pub(crate) struct AfterReply(Box<dyn FnOnce() + Send + Sync>);
+impl std::fmt::Debug for AfterReply {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("AfterReply(..)")
+    }
+}
+impl AfterReply {
+    pub(crate) fn run(self) {
+        (self.0)();
+    }
+}
+
 /// Accept a namespace connection with application-owned, typed session state.
 /// The session and authentication result live until namespace disconnection;
 /// in-flight handlers can retain them until they complete.
@@ -77,6 +89,7 @@ pub struct Reply<T = ()> {
     pub(crate) data: T,
     pub(crate) rooms: Vec<RoomAction>,
     pub(crate) payload_ack: bool,
+    pub(crate) after_reply: Vec<AfterReply>,
 }
 impl<T> Reply<T> {
     /// Reply with business data.
@@ -85,6 +98,7 @@ impl<T> Reply<T> {
             data,
             rooms: Vec::new(),
             payload_ack: false,
+            after_reply: Vec::new(),
         }
     }
     /// Send the business value as one acknowledgement argument, without the
@@ -98,7 +112,21 @@ impl<T> Reply<T> {
             data,
             rooms: Vec::new(),
             payload_ack: true,
+            after_reply: Vec::new(),
         }
+    }
+    /// Invoke an application continuation after successful room actions and
+    /// the optional ACK send attempt. An ACK has been queued or failed here;
+    /// this does not establish a transport flush or receipt by the peer.
+    ///
+    /// Continuations run once, in registration order, also for events without
+    /// an ACK ID and after ACK serialization/send failures. Business errors or
+    /// rejected room actions do not run them. Keep callbacks nonblocking: hand
+    /// work to an application-owned queue with its normal shutdown and limits.
+    #[must_use]
+    pub fn after_reply(mut self, continuation: impl FnOnce() + Send + Sync + 'static) -> Self {
+        self.after_reply.push(AfterReply(Box::new(continuation)));
+        self
     }
     /// Join a namespace-local room on successful completion.
     #[must_use]

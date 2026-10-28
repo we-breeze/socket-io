@@ -356,25 +356,33 @@ fn apply_reply<A: Adapter, T>(
 pub fn complete_event<A: Adapter, T: Serialize>(
     socket: &SocketRef<A>,
     ack: AckContext<A>,
-    result: Result<Reply<T>, ClientError>,
+    mut result: Result<Reply<T>, ClientError>,
     metrics: EventMetrics,
 ) {
     let payload_ack = result.as_ref().is_ok_and(|reply| reply.payload_ack);
+    let after_reply = result
+        .as_mut()
+        .map(|reply| std::mem::take(&mut reply.after_reply))
+        .unwrap_or_default();
     let result = result.and_then(|reply| apply_reply(socket, reply, metrics));
-    if !ack.requested {
-        if let Err(error) = result {
-            tracing::debug!(code = %error.code, "unacknowledged Socket.IO event failed");
+    let completed = result.is_ok();
+    if ack.requested {
+        let observation = metrics.ack.start();
+        let sent = match result {
+            Ok(data) if payload_ack => ack.sender.send(&(data,)),
+            Ok(data) => ack.sender.send(&Success { ok: true, data }),
+            Err(error) => ack.sender.send(&Failure { ok: false, error }),
+        };
+        observation.finish(sent.is_ok());
+        if let Err(error) = sent {
+            tracing::debug!(?error, "Socket.IO acknowledgement failed");
         }
-        return;
+    } else if let Err(error) = result {
+        tracing::debug!(code = %error.code, "unacknowledged Socket.IO event failed");
     }
-    let observation = metrics.ack.start();
-    let sent = match result {
-        Ok(data) if payload_ack => ack.sender.send(&(data,)),
-        Ok(data) => ack.sender.send(&Success { ok: true, data }),
-        Err(error) => ack.sender.send(&Failure { ok: false, error }),
-    };
-    observation.finish(sent.is_ok());
-    if let Err(error) = sent {
-        tracing::debug!(?error, "Socket.IO acknowledgement failed");
+    if completed {
+        for continuation in after_reply {
+            continuation.run();
+        }
     }
 }
