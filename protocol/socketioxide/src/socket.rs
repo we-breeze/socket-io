@@ -858,7 +858,7 @@ impl<A: Adapter> PartialEq for Socket<A> {
 }
 
 #[doc(hidden)]
-#[cfg(feature = "__test_harness")]
+#[cfg(any(test, feature = "__test_harness"))]
 impl Socket<LocalAdapter> {
     /// Creates a dummy socket for testing purposes
     pub fn new_dummy(sid: Sid, ns: Arc<Namespace<LocalAdapter>>) -> Socket<LocalAdapter> {

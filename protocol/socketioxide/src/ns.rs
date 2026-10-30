@@ -402,7 +402,7 @@ impl SocketEmitter for Emitter {
 }
 
 #[doc(hidden)]
-#[cfg(feature = "__test_harness")]
+#[cfg(any(test, feature = "__test_harness"))]
 impl Namespace<crate::adapter::LocalAdapter> {
     pub fn new_dummy<const S: usize>(sockets: [Sid; S]) -> Arc<Self> {
         let ns = Namespace::new("/".into(), async || (), &(), &SocketIoConfig::default());

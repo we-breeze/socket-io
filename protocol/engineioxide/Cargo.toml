@@ -51,28 +51,34 @@ path = "src/lib.rs"
 [[test]]
 name = "disconnect_reason"
 path = "tests/disconnect_reason.rs"
+required-features = ["__test_harness"]
 
 [[test]]
 name = "fixture"
 path = "tests/fixture.rs"
+required-features = ["__test_harness"]
 
 [[test]]
 name = "peek_packet"
 path = "tests/peek_packet.rs"
+required-features = ["__test_harness"]
 
 [[test]]
 name = "volatile"
 path = "tests/volatile.rs"
+required-features = ["__test_harness"]
 
 [[bench]]
 name = "packet_decode"
 path = "benches/packet_decode.rs"
 harness = false
+required-features = ["__test_harness"]
 
 [[bench]]
 name = "packet_encode"
 path = "benches/packet_encode.rs"
 harness = false
+required-features = ["__test_harness"]
 
 [dependencies.bytes]
 version = "1.11"

@@ -291,10 +291,13 @@ impl<A: Adapter> SocketIoBuilder<A> {
     ///
     /// # Using the msgpack parser
     /// ```
+    /// # #[cfg(feature = "msgpack")]
+    /// # {
     /// # use socketioxide::{SocketIo, ParserConfig};
     /// let (io, layer) = SocketIo::builder()
     ///     .with_parser(ParserConfig::msgpack())
     ///     .build_layer();
+    /// # }
     /// ```
     ///
     /// # Using the common parser and customizing config
