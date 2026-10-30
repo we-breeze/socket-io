@@ -1,0 +1,223 @@
+# Breeze compatibility distribution; see ../UPSTREAM.md.
+[package]
+edition = "2024"
+rust-version = "1.94.0"
+name = "brz-socketioxide"
+version = "0.18.7-brz.1"
+authors = ["Théodore Prévot <"]
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+description = "Socket IO server implementation in rust as a Tower Service."
+homepage = "https://github.com/totodore/socketioxide"
+readme = "README.md"
+keywords = [
+    "socketio",
+    "tower",
+    "axum",
+    "hyper",
+    "websocket",
+]
+categories = [
+    "asynchronous",
+    "network-programming",
+    "web-programming::websocket",
+]
+license = "MIT"
+repository = "https://github.com/we-breeze/socket-io"
+
+[package.metadata.docs.rs]
+features = [
+    "v4",
+    "extensions",
+    "tracing",
+    "state",
+    "msgpack",
+]
+rustdoc-args = [
+    "--cfg",
+    "docsrs",
+]
+
+[features]
+__test_harness = ["engineioxide/__test_harness"]
+extensions = []
+msgpack = ["dep:socketioxide-parser-msgpack"]
+state = ["dep:state"]
+tracing = [
+    "dep:tracing",
+    "engineioxide/tracing",
+]
+v4 = ["engineioxide/v3"]
+
+[lib]
+name = "socketioxide"
+path = "src/lib.rs"
+
+[[test]]
+name = "acknowledgement"
+path = "tests/acknowledgement.rs"
+
+[[test]]
+name = "concurrent_emit"
+path = "tests/concurrent_emit.rs"
+
+[[test]]
+name = "connect"
+path = "tests/connect.rs"
+
+[[test]]
+name = "disconnect_reason"
+path = "tests/disconnect_reason.rs"
+
+[[test]]
+name = "extractors"
+path = "tests/extractors.rs"
+
+[[test]]
+name = "fixture"
+path = "tests/fixture.rs"
+
+[[test]]
+name = "utils"
+path = "tests/utils.rs"
+
+[[test]]
+name = "volatile"
+path = "tests/volatile.rs"
+
+[[bench]]
+name = "extensions"
+path = "benches/extensions.rs"
+harness = false
+
+[dependencies.bytes]
+version = "1.11"
+features = ["serde"]
+
+[dependencies.engineioxide]
+version = "=0.17.7-brz.1"
+package = "brz-engineioxide"
+path = "../engineioxide"
+
+[dependencies.futures-core]
+version = "0.3"
+
+[dependencies.futures-util]
+version = "0.3"
+features = ["std"]
+default-features = false
+
+[dependencies.http]
+version = "1.4"
+
+[dependencies.http-body]
+version = "1.0"
+
+[dependencies.hyper]
+version = "1.9"
+
+[dependencies.matchit]
+version = "0.9"
+
+[dependencies.pin-project-lite]
+version = "0.2"
+
+[dependencies.serde]
+version = "1.0"
+features = ["derive"]
+
+[dependencies.socketioxide-core]
+version = "0.19.0"
+
+[dependencies.socketioxide-parser-common]
+version = "0.17.2"
+
+[dependencies.socketioxide-parser-msgpack]
+version = "0.17.3"
+optional = true
+
+[dependencies.state]
+version = "0.6.0"
+optional = true
+
+[dependencies.thiserror]
+version = "2.0"
+
+[dependencies.tokio]
+version = "1.51"
+features = [
+    "rt",
+    "time",
+]
+
+[dependencies.tower-layer]
+version = "0.3"
+
+[dependencies.tower-service]
+version = "0.3"
+
+[dependencies.tracing]
+version = "0.1"
+optional = true
+
+[dev-dependencies.axum]
+version = "0.8"
+
+[dev-dependencies.criterion]
+version = "4"
+package = "codspeed-criterion-compat"
+
+[dev-dependencies.http-body-util]
+version = "0.1"
+
+[dev-dependencies.rand]
+version = "0.10"
+default-features = false
+
+[dev-dependencies.serde_json]
+version = "1.0"
+
+[dev-dependencies.tokio]
+version = "1.51"
+features = [
+    "macros",
+    "parking_lot",
+    "rt-multi-thread",
+]
+
+[dev-dependencies.tokio-stream]
+version = "0.1"
+
+[dev-dependencies.tokio-tungstenite]
+version = "0.30"
+
+[dev-dependencies.tokio-util]
+version = "0.7.18"
+features = ["io"]
+default-features = false
+
+[dev-dependencies.tracing-subscriber]
+version = "0.3"
+features = ["env-filter"]
+
+[lints.clippy]
+all = "warn"
+complexity = "warn"
+correctness = "deny"
+perf = "warn"
+suspicious = "warn"
+
+[lints.rust]
+future_incompatible = "warn"
+nonstandard_style = "warn"
+rust_2018_idioms = "warn"
+rust_2024_compatibility = "warn"
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+priority = 0
+check-cfg = ["cfg(fuzzing)"]
