@@ -62,7 +62,6 @@ async fn no_pong_waits_for_the_advertised_interval_and_closes_with_normal_status
                     assert!(first_ping.replace(started.elapsed()).is_none());
                     // This client deliberately sends no Engine.IO PONG.
                 }
-                Message::Text(text) if text == "1" || text.starts_with("41/test,") => {}
                 Message::Close(frame) => break frame,
                 Message::Ping(bytes) => socket.send(Message::Pong(bytes)).await.unwrap(),
                 other => panic!("unexpected heartbeat packet: {other:?}"),

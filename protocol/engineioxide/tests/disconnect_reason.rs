@@ -15,7 +15,7 @@ use engineioxide::{
     service::EngineIoService,
     socket::{DisconnectReason, Socket},
 };
-use futures_util::SinkExt;
+use futures_util::{SinkExt, StreamExt};
 use tokio::sync::mpsc;
 
 mod fixture;
@@ -74,7 +74,10 @@ impl EngineIoHandler for CloseHandler {
 pub async fn ws_server_closing() {
     let (socket_tx, mut socket_rx) = mpsc::channel(1);
     let mut svc = create_server(CloseHandler { socket_tx }).await;
-    let _stream = create_ws_connection(&mut svc).await;
+    let mut stream = create_ws_connection(&mut svc).await;
+    assert!(
+        matches!(stream.next().await.unwrap().unwrap(), Message::Text(open) if open.starts_with('0'))
+    );
 
     let socket = socket_rx.recv().await.unwrap();
     socket.close(DisconnectReason::ClosingServer);
@@ -83,6 +86,39 @@ pub async fn ws_server_closing() {
         .await
         .expect("timeout: ws session did not close while the forward task held the channel lock");
     assert!(socket.is_closed());
+
+    // An explicit server disconnect still sends Engine.IO CLOSE before WS Close.
+    let frames = tokio::time::timeout(Duration::from_millis(100), async {
+        let close_packet = stream.next().await.unwrap().unwrap();
+        let transport_close = stream.next().await.unwrap().unwrap();
+        (close_packet, transport_close)
+    })
+    .await
+    .unwrap();
+    assert!(matches!(frames.0, Message::Text(text) if text == "1"));
+    assert!(matches!(frames.1, Message::Close(Some(_))));
+}
+
+/// A pending HTTP poll needs a CLOSE packet even when the heartbeat expires.
+#[tokio::test]
+async fn polling_heartbeat_timeout_retains_close_packet() {
+    let (socket_tx, mut socket_rx) = mpsc::channel(1);
+    let mut svc = create_server(CloseHandler { socket_tx }).await;
+    let sid = create_polling_connection(&mut svc).await;
+    let socket = socket_rx.recv().await.unwrap();
+    let poll = tokio::spawn(fixture::send_req_raw(
+        &mut svc,
+        format!("transport=polling&sid={sid}"),
+        http::Method::GET,
+        None,
+    ));
+    tokio::task::yield_now().await;
+    socket.close(DisconnectReason::HeartbeatTimeout);
+    let payload = tokio::time::timeout(Duration::from_millis(100), poll)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(payload, "1");
 }
 
 /// Same as [`ws_server_closing`] but for polling with a long-poll request in-flight.

@@ -465,8 +465,11 @@ where
     /// The socket will be removed from the `Engine` and the [`Handler`](crate::handler::EngineIoHandler) will be notified.
     #[cfg_attr(feature = "tracing", tracing::instrument(skip(self)))]
     pub fn close(&self, reason: DisconnectReason) {
-        // Try to send a close packet is the connection is still operational.
-        self.send(Packet::Close).ok();
+        // A timed-out WebSocket ends with its transport Close, as in python-engineio.
+        // Polling still needs an Engine.IO CLOSE; explicit server closure keeps it too.
+        if !self.is_ws() || reason != DisconnectReason::HeartbeatTimeout {
+            self.send(Packet::Close).ok();
+        }
 
         (self.close_fn)(self.id, reason);
     }

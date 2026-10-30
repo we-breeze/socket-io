@@ -13,6 +13,7 @@ async fn handler(socket: SocketRef) {
     // Find extension data in each socket in the room1 and room3 rooms, except for room2
     let sockets = socket.within("room1").within("room3").except("room2").sockets();
     for socket in sockets {
+        #[cfg(feature = "extensions")]
         println!("Socket extension: {:?}", socket.extensions.get::<String>());
     }
 }

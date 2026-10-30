@@ -60,26 +60,32 @@ path = "src/lib.rs"
 [[test]]
 name = "acknowledgement"
 path = "tests/acknowledgement.rs"
+required-features = ["__test_harness"]
 
 [[test]]
 name = "concurrent_emit"
 path = "tests/concurrent_emit.rs"
+required-features = ["__test_harness"]
 
 [[test]]
 name = "connect"
 path = "tests/connect.rs"
+required-features = ["__test_harness"]
 
 [[test]]
 name = "disconnect_reason"
 path = "tests/disconnect_reason.rs"
+required-features = ["__test_harness"]
 
 [[test]]
 name = "extractors"
 path = "tests/extractors.rs"
+required-features = ["__test_harness", "state", "extensions"]
 
 [[test]]
 name = "fixture"
 path = "tests/fixture.rs"
+required-features = ["__test_harness"]
 
 [[test]]
 name = "utils"
@@ -88,11 +94,13 @@ path = "tests/utils.rs"
 [[test]]
 name = "volatile"
 path = "tests/volatile.rs"
+required-features = ["__test_harness"]
 
 [[bench]]
 name = "extensions"
 path = "benches/extensions.rs"
 harness = false
+required-features = ["extensions"]
 
 [dependencies.bytes]
 version = "1.11"
@@ -166,6 +174,12 @@ optional = true
 
 [dev-dependencies.axum]
 version = "0.8"
+
+[dev-dependencies.engineioxide]
+version = "=0.17.7-brz.1"
+package = "brz-engineioxide"
+path = "../engineioxide"
+features = ["__test_harness"]
 
 [dev-dependencies.criterion]
 version = "4"
