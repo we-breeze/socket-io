@@ -1,4 +1,4 @@
-"""Publish macros first; verify an existing artifact before resuming a release."""
+"""Publish dependencies first; verify existing artifacts before resuming."""
 import hashlib
 import json
 from pathlib import Path
@@ -40,5 +40,7 @@ def publish(manifest):
 
 
 if __name__ == "__main__":
+    publish("protocol/engineioxide/Cargo.toml")
+    publish("protocol/socketioxide/Cargo.toml")
     publish("macros/Cargo.toml")
     publish("Cargo.toml")
