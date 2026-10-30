@@ -30,7 +30,7 @@ io.ns("/", async |socket: SocketRef| {
     // Volatile broadcast to a room
     socket.volatile().to("game_room").emit("update", &42).await.ok();
 
-    
+
     // Same than without volatile.
     socket.volatile().to("game_room").emit_with_ack::<_, ()>("update", &42).await.ok();
 });
