@@ -41,7 +41,10 @@ jobs:
       - run: cargo test --locked --no-default-features
       - run: cargo test --locked --all-features
       - run: cargo clippy --locked --all-features --all-targets -- -D warnings
-      - run: cargo package --workspace --locked --all-features --allow-dirty
+      # New protocol packages may not exist in the registry yet. Inspect the
+      # distribution here; the publisher compiles each packaged artifact in
+      # dependency order before uploading it.
+      - run: cargo package --workspace --locked --all-features --allow-dirty --list
       - run: npm ci --prefix tests/client --ignore-scripts
       - name: Official client interoperability
         shell: bash
