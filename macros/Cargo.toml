@@ -1,6 +1,6 @@
 [package]
 name = "brz-socket-io-macros"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2024"
 rust-version = "1.94"
 description = "Namespace and event exports for brz-socket-io"

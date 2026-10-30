@@ -1,6 +1,6 @@
 [package]
 name = "brz-socket-io"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2024"
 rust-version = "1.94"
 description = "Provider-based Socket.IO services for Breeze applications"
@@ -15,7 +15,7 @@ resolver = "3"
 
 [dependencies]
 brz-http-server = { version = "=0.0.33", features = ["hyper"] }
-socket-io-macros = { path = "macros", version = "=0.0.3", package = "brz-socket-io-macros", optional = true }
+socket-io-macros = { path = "macros", version = "=0.0.4", package = "brz-socket-io-macros", optional = true }
 inventory = { version = "0.3", optional = true }
 engineioxide = { package = "brz-engineioxide", path = "protocol/engineioxide", version = "=0.17.7-brz.1" }
 socketioxide = { package = "brz-socketioxide", path = "protocol/socketioxide", version = "=0.18.7-brz.1", features = ["state", "extensions", "tracing"] }
