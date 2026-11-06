@@ -3,7 +3,7 @@
 edition = "2024"
 rust-version = "1.94.0"
 name = "brz-socketioxide"
-version = "0.18.7-brz.1"
+version = "0.18.7-brz.2"
 authors = ["Théodore Prévot <"]
 build = false
 autolib = false
@@ -107,7 +107,7 @@ version = "1.11"
 features = ["serde"]
 
 [dependencies.engineioxide]
-version = "=0.17.7-brz.1"
+version = "=0.17.7-brz.2"
 package = "brz-engineioxide"
 path = "../engineioxide"
 
@@ -176,7 +176,7 @@ optional = true
 version = "0.8"
 
 [dev-dependencies.engineioxide]
-version = "=0.17.7-brz.1"
+version = "=0.17.7-brz.2"
 package = "brz-engineioxide"
 path = "../engineioxide"
 features = ["__test_harness"]

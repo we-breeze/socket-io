@@ -3,7 +3,7 @@
 edition = "2024"
 rust-version = "1.94.0"
 name = "brz-engineioxide"
-version = "0.17.7-brz.1"
+version = "0.17.7-brz.2"
 authors = ["Théodore Prévot <"]
 build = false
 autolib = false

@@ -386,6 +386,8 @@ where
             #[cfg(feature = "tracing")]
             tracing::trace!(sid = ?self.id, "pong received");
 
+            // Start the next interval from the PONG, as in Engine.IO's reference server.
+            interval_tick.reset();
             interval_tick.tick().await;
         }
     }

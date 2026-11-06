@@ -7,7 +7,7 @@ use std::time::Duration;
 use brz_socket_io::{Config, Server, extract::SocketRef};
 use common::{DEADLINE, Running};
 use futures_util::{SinkExt, StreamExt};
-use tokio::time::{Instant, timeout};
+use tokio::time::{Instant, sleep, timeout};
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{
@@ -97,6 +97,7 @@ async fn pong_keeps_the_connection_alive_and_client_close_status_is_preserved() 
     .await
     .unwrap();
     let mut pings = 0;
+    let mut first_pong_at = None;
     let mut closing = false;
     let frame = timeout(DEADLINE, async {
         loop {
@@ -111,6 +112,16 @@ async fn pong_keeps_the_connection_alive_and_client_close_status_is_preserved() 
                 Message::Text(text) if text == "2" => {
                     assert!(!closing);
                     pings += 1;
+                    if pings == 1 {
+                        sleep(Duration::from_millis(40)).await;
+                        first_pong_at = Some(Instant::now());
+                    } else if let Some(pong_at) = first_pong_at.take() {
+                        let elapsed = pong_at.elapsed();
+                        assert!(
+                            elapsed >= INTERVAL - Duration::from_millis(10),
+                            "next PING arrived only {elapsed:?} after the delayed PONG"
+                        );
+                    }
                     socket.send(Message::Text("3".into())).await.unwrap();
                     if pings == 3 {
                         closing = true;

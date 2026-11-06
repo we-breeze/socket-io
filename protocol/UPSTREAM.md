@@ -5,8 +5,8 @@ Socketioxide 0.18.7 crates from https://github.com/Totodore/socketioxide,
 upstream revision 708ea9fc5ee549229d7236924e4975ec5977a59c. Original MIT
 licenses and author attribution remain in each package.
 
-Breeze publishes brz-engineioxide 0.17.7-brz.1 and brz-socketioxide
-0.18.7-brz.1; Rust library names and native APIs remain unchanged.
+Breeze publishes brz-engineioxide 0.17.7-brz.2 and brz-socketioxide
+0.18.7-brz.2; Rust library names and native APIs remain unchanged.
 Socketioxide changes package identity, its Engineioxide dependency and test
 harness feature declarations. Harness helpers are available during unit tests;
 integration tests and benchmarks declare their required features explicitly.
@@ -15,6 +15,7 @@ their adapter traits agree.
 
 Engineioxide changes:
 - Wait the advertised interval before the first Engine.IO v4 PING.
+- Start the next Engine.IO v4 PING interval when the server receives the PONG.
 - Send a normal (1000), empty-reason WebSocket Close on server closure.
   Tungstenite preserves a received client's explicit Close reply.
 - WebSocket heartbeat expiry closes the transport without injecting an Engine.IO
