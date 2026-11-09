@@ -3,7 +3,7 @@
 edition = "2024"
 rust-version = "1.94.0"
 name = "brz-socketioxide"
-version = "0.18.7-brz.2"
+version = "0.18.7-brz.3"
 authors = ["Théodore Prévot <"]
 build = false
 autolib = false

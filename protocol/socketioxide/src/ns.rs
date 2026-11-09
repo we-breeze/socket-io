@@ -32,7 +32,28 @@ pub struct Namespace<A: Adapter> {
     pub(crate) adapter: Arc<A>,
     parser: Parser,
     handler: BoxedConnectHandler<A>,
-    sockets: RwLock<HashMap<Sid, Arc<Socket<A>>>>,
+    sockets: RwLock<NamespaceSockets<A>>,
+}
+
+struct NamespaceSockets<A: Adapter> {
+    by_sid: HashMap<Sid, Arc<Socket<A>>>,
+    // Reserve the transport route while CONNECT middleware runs. Only accepted
+    // sockets appear in by_sid and are addressable by the adapter.
+    by_transport: HashMap<Sid, Sid>,
+}
+
+impl<A: Adapter> NamespaceSockets<A> {
+    fn detach(&mut self, transport: Sid, sid: Sid) {
+        if self.by_transport.get(&transport) == Some(&sid) {
+            self.by_transport.remove(&transport);
+        }
+    }
+
+    fn transport_socket(&self, transport: Sid) -> Option<&Arc<Socket<A>>> {
+        self.by_transport
+            .get(&transport)
+            .and_then(|sid| self.by_sid.get(sid))
+    }
 }
 
 /// ===== impl NamespaceCtr =====
@@ -85,7 +106,10 @@ impl<A: Adapter> Namespace<A> {
             path: path.clone(),
             handler,
             parser,
-            sockets: HashMap::new().into(),
+            sockets: RwLock::new(NamespaceSockets {
+                by_sid: HashMap::new(),
+                by_transport: HashMap::new(),
+            }),
             adapter: Arc::new(A::new(
                 adapter_state,
                 CoreLocalAdapter::new(Emitter::new(ns.clone(), parser, path, ack_timeout, uid)),
@@ -100,73 +124,119 @@ impl<A: Adapter> Namespace<A> {
     /// * If the handler returns Ok, a connect packet is sent to the client and the handler `is` called.
     pub(crate) async fn connect(
         self: Arc<Self>,
-        sid: Sid,
         esocket: Arc<engineioxide::Socket<SocketData<A>>>,
         auth: Option<Value>,
     ) -> Result<(), ConnectFail> {
+        let transport = esocket.id;
+        let protocol = esocket.protocol.into();
+        let sid = match protocol {
+            ProtocolVersion::V5 => Sid::new(),
+            ProtocolVersion::V4 => transport,
+        };
+        {
+            let mut sockets = self.sockets.write().unwrap();
+            if esocket.is_closed()
+                || sockets.by_transport.contains_key(&transport)
+                || sockets.by_sid.contains_key(&sid)
+            {
+                return Err(ConnectFail);
+            }
+            sockets.by_transport.insert(transport, sid);
+        }
         let socket: Arc<Socket<A>> =
             Socket::new(sid, self.clone(), esocket.clone(), self.parser).into();
 
         if let Err(e) = self.handler.call_middleware(socket.clone(), &auth).await {
             #[cfg(feature = "tracing")]
-            tracing::trace!(ns = self.path.as_str(), ?socket.id, "emitting connect_error packet");
+            tracing::trace!(
+                ns = self.path.as_str(),
+                ?sid,
+                "emitting connect_error packet"
+            );
 
-            let data = e.to_string();
-            if let Err(_e) = socket.send(Packet::connect_error(self.path.clone(), data)) {
-                #[cfg(feature = "tracing")]
-                tracing::debug!(%sid, "error sending connect_error packet: {_e}, closing conn");
-
-                // user middleware code might have made the socket join some
-                // room in the local/remote adapter.
-                self.remove_socket(sid);
+            let result = socket.send(Packet::connect_error(self.path.clone(), e.to_string()));
+            self.discard_connect(transport, sid);
+            if result.is_err() {
                 esocket.close(engineioxide::DisconnectReason::PacketParsingError);
             }
             return Err(ConnectFail);
         }
 
-        self.sockets.write().unwrap().insert(sid, socket.clone());
-        #[cfg(feature = "tracing")]
-        tracing::trace!(?socket.id, ?self.path, "socket added to namespace");
-
-        let protocol = esocket.protocol.into();
-        let payload = ConnectPacket { sid: socket.id };
         let payload = match protocol {
-            ProtocolVersion::V5 => Some(self.parser.encode_default(&payload).unwrap()),
+            ProtocolVersion::V5 => {
+                Some(self.parser.encode_default(&ConnectPacket { sid }).unwrap())
+            }
             ProtocolVersion::V4 => None,
         };
-        if let Err(_e) = socket.send(Packet::connect(self.path.clone(), payload)) {
-            #[cfg(feature = "tracing")]
-            tracing::debug!(%sid, "error sending connect packet: {_e}, closing conn");
-
-            self.remove_socket(sid);
+        let result = {
+            let mut sockets = self.sockets.write().unwrap();
+            if sockets.by_transport.get(&transport) != Some(&sid) || esocket.is_closed() {
+                drop(sockets);
+                self.discard_connect(transport, sid);
+                return Err(ConnectFail);
+            }
+            // Publish the routing entry together with the successful CONNECT
+            // response so a follow-up packet cannot race its admission.
+            let result = socket.send(Packet::connect(self.path.clone(), payload));
+            if result.is_ok() {
+                socket.set_connected(true);
+                sockets.by_sid.insert(sid, socket.clone());
+            }
+            result
+        };
+        if result.is_err() {
+            self.discard_connect(transport, sid);
             esocket.close(engineioxide::DisconnectReason::TransportError);
             return Err(ConnectFail);
         }
 
-        socket.set_connected(true);
         self.handler.call(socket, auth);
-
         Ok(())
+    }
+
+    fn discard_connect(&self, transport: Sid, sid: Sid) {
+        self.detach_transport(transport, sid);
+        self.adapter.get_local().del_all(sid);
+    }
+
+    pub(crate) fn detach_transport(&self, transport: Sid, sid: Sid) {
+        self.sockets.write().unwrap().detach(transport, sid);
+    }
+
+    pub(crate) fn disconnect_transport(&self, transport: Sid) -> Option<Arc<Socket<A>>> {
+        let mut sockets = self.sockets.write().unwrap();
+        let sid = sockets.by_transport.remove(&transport)?;
+        sockets.by_sid.get(&sid).cloned()
     }
 
     /// Removes a socket from a namespace
     pub fn remove_socket(&self, sid: Sid) {
-        #[cfg(feature = "tracing")]
-        tracing::trace!(?sid, ?self.path, "removing socket from namespace");
-
-        self.sockets.write().unwrap().remove(&sid);
+        {
+            let mut sockets = self.sockets.write().unwrap();
+            if let Some(socket) = sockets.by_sid.remove(&sid) {
+                sockets.detach(socket.transport_id(), sid);
+            }
+        }
         self.adapter.get_local().del_all(sid);
     }
 
     pub fn has(&self, sid: Sid) -> bool {
-        self.sockets.read().unwrap().values().any(|s| s.id == sid)
+        self.sockets.read().unwrap().by_sid.contains_key(&sid)
     }
 
-    pub fn recv(&self, sid: Sid, packet: PacketData) -> Result<(), Error> {
+    pub fn recv(&self, transport: Sid, packet: PacketData) -> Result<(), Error> {
         match packet {
             PacketData::Connect(_) => unreachable!("connect packets should be handled before"),
             PacketData::ConnectError(_) => Err(Error::InvalidPacketType),
-            packet => self.get_socket(sid)?.recv(packet),
+            packet => {
+                let socket = self
+                    .sockets
+                    .read()
+                    .unwrap()
+                    .transport_socket(transport)
+                    .cloned();
+                socket.ok_or(Error::SocketGone(transport))?.recv(packet)
+            }
         }
     }
 
@@ -174,13 +244,20 @@ impl<A: Adapter> Namespace<A> {
         self.sockets
             .read()
             .unwrap()
+            .by_sid
             .get(&sid)
             .cloned()
             .ok_or(Error::SocketGone(sid))
     }
 
     pub fn get_sockets(&self) -> Vec<Arc<Socket<A>>> {
-        self.sockets.read().unwrap().values().cloned().collect()
+        self.sockets
+            .read()
+            .unwrap()
+            .by_sid
+            .values()
+            .cloned()
+            .collect()
     }
 
     /// Closes the entire namespace :
@@ -192,7 +269,7 @@ impl<A: Adapter> Namespace<A> {
     /// This function is using .await points only when called with [`DisconnectReason::ClosingServer`]
     pub async fn close(&self, reason: DisconnectReason) {
         use futures_util::future;
-        let sockets = self.sockets.read().unwrap().clone();
+        let sockets = self.get_sockets();
 
         #[cfg(feature = "tracing")]
         tracing::debug!(?self.path, "closing {} sockets in namespace", sockets.len());
@@ -200,10 +277,9 @@ impl<A: Adapter> Namespace<A> {
         if reason == DisconnectReason::ClosingServer {
             // When closing the underlying transport, this will indirectly close the socket
             // Therefore there is no need to manually call `s.close()`.
-            future::join_all(sockets.values().map(|s| s.close_underlying_transport())).await;
+            future::join_all(sockets.iter().map(|s| s.close_underlying_transport())).await;
         } else {
-            for s in sockets.into_values() {
-                let _sid = s.id;
+            for s in sockets {
                 s.close(reason);
             }
         }
@@ -244,7 +320,7 @@ trait InnerEmitter: Send + Sync + 'static {
 impl<A: Adapter> InnerEmitter for Namespace<A> {
     fn get_remote_sockets(&self, sids: BroadcastIter<'_>, uid: Uid) -> Vec<RemoteSocketData> {
         let sockets = self.sockets.read().unwrap();
-        sids.filter_map(|sid| sockets.get(&sid))
+        sids.filter_map(|sid| sockets.by_sid.get(&sid))
             .map(|socket| RemoteSocketData {
                 id: socket.id,
                 ns: self.path.clone(),
@@ -256,6 +332,7 @@ impl<A: Adapter> InnerEmitter for Namespace<A> {
         self.sockets
             .read()
             .unwrap()
+            .by_sid
             .keys()
             .filter(|id| filter(id))
             .copied()
@@ -265,7 +342,7 @@ impl<A: Adapter> InnerEmitter for Namespace<A> {
     fn send_many(&self, sids: BroadcastIter<'_>, data: Value) -> Result<(), Vec<SocketError>> {
         let sockets = self.sockets.read().unwrap();
         let errs: Vec<SocketError> = sids
-            .filter_map(|sid| sockets.get(&sid))
+            .filter_map(|sid| sockets.by_sid.get(&sid))
             .filter_map(|socket| socket.send_raw(data.clone()).err())
             .collect();
         if errs.is_empty() { Ok(()) } else { Err(errs) }
@@ -273,7 +350,7 @@ impl<A: Adapter> InnerEmitter for Namespace<A> {
 
     fn send_many_volatile(&self, sids: BroadcastIter<'_>, data: Value) {
         let sockets = self.sockets.read().unwrap();
-        sids.filter_map(|sid| sockets.get(&sid))
+        sids.filter_map(|sid| sockets.by_sid.get(&sid))
             .for_each(|socket| socket.send_raw_volatile(data.clone()));
     }
 
@@ -284,7 +361,7 @@ impl<A: Adapter> InnerEmitter for Namespace<A> {
         timeout: Duration,
     ) -> (AckInnerStream, u32) {
         let sockets_map = self.sockets.read().unwrap();
-        let sockets = sids.filter_map(|sid| sockets_map.get(&sid));
+        let sockets = sids.filter_map(|sid| sockets_map.by_sid.get(&sid));
         AckInnerStream::broadcast(packet, sockets, timeout)
     }
 
@@ -297,7 +374,7 @@ impl<A: Adapter> InnerEmitter for Namespace<A> {
         let sockets = {
             let sock_map = self.sockets.read().unwrap();
             sids.into_iter()
-                .filter_map(|sid| sock_map.get(&sid))
+                .filter_map(|sid| sock_map.by_sid.get(&sid))
                 .cloned()
                 .collect::<Vec<_>>()
         };
@@ -407,16 +484,19 @@ impl Namespace<crate::adapter::LocalAdapter> {
     pub fn new_dummy<const S: usize>(sockets: [Sid; S]) -> Arc<Self> {
         let ns = Namespace::new("/".into(), async || (), &(), &SocketIoConfig::default());
         for sid in sockets {
-            ns.sockets
-                .write()
-                .unwrap()
+            let mut registry = ns.sockets.write().unwrap();
+            registry
+                .by_sid
                 .insert(sid, Socket::new_dummy(sid, ns.clone()).into());
+            registry.by_transport.insert(sid, sid);
         }
         ns
     }
 
     pub fn clean_dummy_sockets(&self) {
-        self.sockets.write().unwrap().clear();
+        let mut sockets = self.sockets.write().unwrap();
+        sockets.by_sid.clear();
+        sockets.by_transport.clear();
     }
 }
 
@@ -424,7 +504,7 @@ impl<A: Adapter> std::fmt::Debug for Namespace<A> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Namespace")
             .field("path", &self.path)
-            .field("sockets", &self.sockets)
+            .field("sockets", &self.sockets.read().unwrap().by_sid)
             .finish()
     }
 }

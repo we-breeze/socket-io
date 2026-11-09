@@ -783,11 +783,18 @@ impl<A: Adapter> Socket<A> {
         }
     }
 
+    pub(crate) fn transport_id(&self) -> Sid {
+        self.esocket.id
+    }
+
     /// Called when the socket is gracefully disconnected from the server or the client
     ///
     /// It maybe also close when the underlying transport is closed or failed.
     pub(crate) fn close(self: Arc<Self>, reason: DisconnectReason) {
-        self.set_connected(false);
+        if !self.connected.swap(false, Ordering::SeqCst) {
+            return;
+        }
+        self.ns.detach_transport(self.transport_id(), self.id);
 
         let disconnect_handler = { self.disconnect_handler.lock().unwrap().take() };
 

@@ -6,11 +6,14 @@ upstream revision 708ea9fc5ee549229d7236924e4975ec5977a59c. Original MIT
 licenses and author attribution remain in each package.
 
 Breeze publishes brz-engineioxide 0.17.7-brz.2 and brz-socketioxide
-0.18.7-brz.2; Rust library names and native APIs remain unchanged.
+0.18.7-brz.3; Rust library names and native APIs remain unchanged.
 Socketioxide changes package identity, its Engineioxide dependency and test
 harness feature declarations. Harness helpers are available during unit tests;
 integration tests and benchmarks declare their required features explicitly.
-Shared core/parser and Redis adapter packages remain upstream packages, so
+Socket.IO v5 allocates a fresh socket ID for each namespace connection and
+retains the Engine.IO session ID for transport routing. Legacy v4 retains its
+existing transport-based socket IDs. Shared core/parser and Redis adapter
+packages remain upstream packages, so
 their adapter traits agree.
 
 Engineioxide changes:

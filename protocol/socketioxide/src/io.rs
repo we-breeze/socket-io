@@ -892,18 +892,17 @@ mod tests {
     #[tokio::test]
     async fn get_socket_by_sid() {
         use engineioxide::Socket;
-        let sid = Sid::new();
+        let transport_id = Sid::new();
         let (_, io) = SocketIo::new_svc();
         io.ns("/", async || {});
-        let socket = Socket::<SocketData<LocalAdapter>>::new_dummy(sid, Box::new(|_, _| {}));
+        let socket =
+            Socket::<SocketData<LocalAdapter>>::new_dummy(transport_id, Box::new(|_, _| {}));
         socket.data.io.set(io.clone()).unwrap();
-        io.0.get_ns("/")
-            .unwrap()
-            .connect(sid, socket, None)
-            .await
-            .ok();
+        let namespace = io.0.get_ns("/").unwrap();
+        assert!(namespace.clone().connect(socket, None).await.is_ok());
 
+        let sid = namespace.get_sockets()[0].id;
         assert!(io.get_socket(sid).is_some());
-        assert!(io.get_socket(Sid::new()).is_none());
+        assert!(io.get_socket(transport_id).is_none());
     }
 }

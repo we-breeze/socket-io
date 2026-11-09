@@ -67,7 +67,7 @@ impl<A: Adapter> Client<A> {
         tracing::debug!("auth: {:?}", auth);
         let protocol: ProtocolVersion = esocket.protocol.into();
         let connect = async move |ns: Arc<Namespace<A>>, esocket: Arc<EIoSocket<SocketData<A>>>| {
-            if ns.connect(esocket.id, esocket.clone(), auth).await.is_ok() {
+            if ns.connect(esocket.clone(), auth).await.is_ok() {
                 // cancel the connect timeout task for v5
                 if let Some(tx) = esocket.data.connect_recv_tx.lock().unwrap().take() {
                     tx.send(()).ok();
@@ -271,7 +271,7 @@ impl<A: Adapter> EngineIoHandler for Client<A> {
             .read()
             .unwrap()
             .values()
-            .filter_map(|ns| ns.get_socket(socket.id).ok())
+            .filter_map(|ns| ns.disconnect_transport(socket.id))
             .collect();
 
         let _cnt = socks

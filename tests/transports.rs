@@ -77,11 +77,12 @@ async fn polling_handshake_and_ack_preserve_injected_state() {
         .text()
         .await
         .unwrap();
-    assert!(
-        connected
-            .split('\u{1e}')
-            .any(|packet| packet.starts_with("40{"))
-    );
+    let connected = connected
+        .split('\u{1e}')
+        .find_map(|packet| packet.strip_prefix("40"))
+        .unwrap();
+    let connected: Value = serde_json::from_str(connected).unwrap();
+    assert_ne!(connected["sid"], handshake["sid"]);
     http.post(&endpoint)
         .body("421[\"read\"]")
         .send()
@@ -113,6 +114,85 @@ async fn polling_handshake_and_ack_preserve_injected_state() {
             .collect::<Vec<_>>(),
         ["431[\"shared-state\"]"]
     );
+    running.stop().await;
+}
+
+#[tokio::test]
+async fn multiplexed_namespaces_keep_distinct_socket_ids_through_reconnect() {
+    let server = Server::builder().build().await.unwrap();
+    let (closed, mut disconnects) = tokio::sync::mpsc::unbounded_channel();
+    for namespace in ["/one", "/two"] {
+        let closed = closed.clone();
+        server.io().ns(namespace, async move |socket: SocketRef| {
+            socket.join(socket.id);
+            socket.on("id", async |socket: SocketRef, ack: AckSender| {
+                ack.send(&socket.id.to_string()).unwrap();
+            });
+            let closed = closed.clone();
+            socket.on_disconnect(async move |socket: SocketRef| {
+                closed.send(socket.id.to_string()).unwrap();
+            });
+        });
+    }
+
+    let io = server.io().clone();
+    let running = Running::start(server).await;
+    let mut client = Client::open(running.address, "/socket.io").await;
+    fn connected_sid(packet: &str, namespace: &str) -> String {
+        let prefix = format!("40{namespace},");
+        let data: Value = serde_json::from_str(packet.strip_prefix(&prefix).unwrap()).unwrap();
+        data["sid"].as_str().unwrap().to_owned()
+    }
+    let one = connected_sid(&client.join_namespace("/one", Value::Null).await, "/one");
+    let two = connected_sid(&client.join_namespace("/two", Value::Null).await, "/two");
+    assert_ne!(one, two);
+
+    for (namespace, sid) in [("/one", &one), ("/two", &two)] {
+        client.send(format!("42{namespace},1[\"id\"]")).await;
+        assert_eq!(client.recv().await, format!("43{namespace},1[\"{sid}\"]"));
+        let namespace = io.of(namespace).unwrap();
+        assert!(namespace.get_socket(sid.parse().unwrap()).is_some());
+    }
+    assert!(
+        io.of("/one")
+            .unwrap()
+            .get_socket(two.parse().unwrap())
+            .is_none()
+    );
+    io.of("/two")
+        .unwrap()
+        .to(two.clone())
+        .emit("direct", &7)
+        .await
+        .unwrap();
+    assert_eq!(client.recv().await, "42/two,[\"direct\",7]");
+
+    client.send("41/one,").await;
+    let one_again = connected_sid(&client.join_namespace("/one", Value::Null).await, "/one");
+    assert_ne!(one_again, one);
+    assert_ne!(one_again, two);
+    assert_eq!(
+        timeout(DEADLINE, disconnects.recv()).await.unwrap(),
+        Some(one)
+    );
+
+    client.send("42/two,2[\"id\"]").await;
+    assert_eq!(client.recv().await, format!("43/two,2[\"{two}\"]"));
+    client.send("42/one,3[\"id\"]").await;
+    assert_eq!(client.recv().await, format!("43/one,3[\"{one_again}\"]"));
+
+    client.close().await;
+    let mut disconnected = Vec::new();
+    for _ in 0..2 {
+        disconnected.push(
+            timeout(DEADLINE, disconnects.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+        );
+    }
+    assert!(disconnected.contains(&two));
+    assert!(disconnected.contains(&one_again));
     running.stop().await;
 }
 
