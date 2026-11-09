@@ -18,7 +18,7 @@ brz-http-server = { version = "=0.0.33", features = ["hyper"] }
 socket-io-macros = { path = "macros", version = "=0.0.5", package = "brz-socket-io-macros", optional = true }
 inventory = { version = "0.3", optional = true }
 engineioxide = { package = "brz-engineioxide", path = "protocol/engineioxide", version = "=0.17.7-brz.2" }
-socketioxide = { package = "brz-socketioxide", path = "protocol/socketioxide", version = "=0.18.7-brz.2", features = ["state", "extensions", "tracing"] }
+socketioxide = { package = "brz-socketioxide", path = "protocol/socketioxide", version = "=0.18.7-brz.3", features = ["state", "extensions", "tracing"] }
 thiserror = "2"
 tokio = { version = "1", features = ["net", "rt", "sync", "time", "macros"] }
 tracing = "0.1"
