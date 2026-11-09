@@ -50,6 +50,8 @@ def publish(manifest):
             raise
         existing = None
     if existing is not None:
+        # publish --dry-run verifies the package without retaining its archive.
+        run("cargo", "package", "-p", name, "--locked", "--no-verify", "--registry", "crates-io")
         artifact = Path("target/package") / f"{name}-{version}.crate"
         local = artifact.read_bytes()
         checksum = existing["cksum"]
