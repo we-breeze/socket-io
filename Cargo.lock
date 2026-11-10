@@ -369,7 +369,7 @@ dependencies = [
 
 [[package]]
 name = "brz-socket-io"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "brz-engineioxide",
  "brz-http-gateway",
@@ -394,7 +394,7 @@ dependencies = [
 
 [[package]]
 name = "brz-socket-io-macros"
-version = "0.0.6"
+version = "0.0.7"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
