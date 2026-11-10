@@ -319,8 +319,10 @@ response-stream registrations are removed when their stream is dropped.
 ## Metrics
 
 The default `metrics` feature uses the single `brz-metrics` registry and
-`type="SOCKET_IO"`. Macro collection prepares handles once at startup, and the
-hot path records through those handles. Metrics cover namespace admissions and
+`type="SOCKET_IO"`. Macro collection formats the metric handles once at startup,
+and each handle registers its slot on first use, so a declared but never used
+namespace, event or emitter never appears in a scrape. The hot path then records
+through the resolved handle. Metrics cover namespace admissions and
 duration, current/cumulative sessions and disconnects, event outcomes/duration/
 slow calls, room actions, and requested ACK sends. A successful business return,
 action outcome and ACK-send outcome are recorded separately. No-ACK events do
@@ -328,9 +330,13 @@ not increment ACK-send metrics. `EventEmitter` separately measures outgoing
 publish, response waiting and response timeouts. Direct native `io()` operations
 are low-level and do not pass through these business metrics.
 
-Identities contain only declared namespace/event names (length-prefixed to avoid
-name collisions), or a declared fallback. SID, user IDs, dynamic room names and
-dynamic fallback event names are never labels. The service slow policy is 200 ms.
+Identities contain only declared namespace/event names, or a declared fallback,
+in the form `event:<namespace>:<event>:<phase>`, `fallback:<namespace>:<phase>`
+and `outgoing:<namespace>:<event>:<phase>`. `:` and `\` inside a namespace are
+escaped (`\:` and `\\`) so joining a namespace and event never produces an
+ambiguous identity; ordinary names are unchanged. SID, user IDs, dynamic room
+names and dynamic fallback event names are never labels. The service slow policy
+is 200 ms.
 Disable with `default-features = false`; `macros` also works without metrics.
 
 All Breeze SDKs in one process must use the same metrics registry version.

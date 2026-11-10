@@ -114,7 +114,7 @@ pub struct Bindings<S, A: Adapter> {
 impl<S: Send + Sync + 'static, A: Adapter> Bindings<S, A> {
     pub fn bind(&self, socket: &SocketRef<A>, state: Arc<S>) {
         for (event, metrics) in &self.events {
-            (event.register)(socket, state.clone(), *metrics);
+            (event.register)(socket, state.clone(), metrics.clone());
         }
     }
     pub fn disconnect(&self, state: Arc<S>) -> Option<DisconnectHook> {
