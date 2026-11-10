@@ -296,12 +296,12 @@ async fn saved_identity_automatic_ack_fallback_binary_and_room_actions() {
                 all.insert(name.to_string(), value);
             }
         });
-        let inspect = "event:9:/business:7:inspect";
+        let inspect = "event:/business:inspect";
         assert_eq!(all[&format!("{inspect}:handler")].failure, 1);
         assert_eq!(all[&format!("{inspect}:ack")].total, 3);
-        assert_eq!(all["event:9:/business:9:bad-reply:handler"].failure, 0);
-        assert_eq!(all["event:9:/business:9:bad-reply:ack"].failure, 1);
-        assert!(all.contains_key("fallback:9:/business:handler"));
+        assert_eq!(all["event:/business:bad-reply:handler"].failure, 0);
+        assert_eq!(all["event:/business:bad-reply:ack"].failure, 1);
+        assert!(all.contains_key("fallback:/business:handler"));
         assert!(!all.keys().any(|key| key.contains("response.created")
             || key.contains("alice")
             || key.contains("new-room")));
@@ -375,9 +375,9 @@ async fn payload_reply_keeps_one_argument_rooms_binary_errors_and_ack_metrics() 
                 all.insert(name.to_string(), value);
             }
         });
-        assert_eq!(all["event:9:/business:13:payload-value:handler"].failure, 1);
-        assert_eq!(all["event:9:/business:13:payload-value:ack"].total, 5);
-        assert_eq!(all["event:9:/business:11:payload-bad:ack"].failure, 1);
+        assert_eq!(all["event:/business:payload-value:handler"].failure, 1);
+        assert_eq!(all["event:/business:payload-value:ack"].total, 5);
+        assert_eq!(all["event:/business:payload-bad:ack"].failure, 1);
     }
     client.close().await;
     running.stop().await;
@@ -488,6 +488,27 @@ async fn prepared_emitters_address_sockets_and_measure_publish_ack_and_timeout_s
         .send(format!(r#"43/outgoing,{id}[{{"answer":42}}]"#))
         .await;
     assert_eq!(pending.await.unwrap().unwrap(), json!({"answer":42}));
+    #[cfg(feature = "metrics")]
+    {
+        // Slots are created on first use: no room action has been recorded for
+        // this namespace yet. Session series already exist in the scrape below
+        // because the client has connected.
+        let mut rooms_registered = false;
+        brz_metrics::visit(|name, kind, _| {
+            if kind == "SOCKET_IO" {
+                rooms_registered |= name == "namespace:/outgoing:rooms";
+            }
+        });
+        assert!(!rooms_registered);
+        use std::io::Read;
+        let mut text = String::new();
+        brz_metrics::PrometheusReader::new()
+            .read_to_string(&mut text)
+            .unwrap();
+        assert!(!text.contains("name=\"outgoing:/outgoing:question:ack_timeout\""));
+        assert!(text.contains("name=\"/outgoing\""));
+        assert!(!text.contains("name=\"namespace:/outgoing:disconnect\""));
+    }
     let request = target.clone();
     let timed_out = tokio::spawn(async move {
         request
@@ -509,16 +530,18 @@ async fn prepared_emitters_address_sockets_and_measure_publish_ack_and_timeout_s
                 all.insert(name.to_string(), value);
             }
         });
-        assert_eq!(all["outgoing:9:/outgoing:8:question:publish"].total, 3);
-        assert_eq!(all["outgoing:9:/outgoing:8:question:publish"].failure, 0);
-        assert_eq!(all["outgoing:9:/outgoing:8:question:ack_wait"].total, 2);
-        assert_eq!(all["outgoing:9:/outgoing:8:question:ack_wait"].failure, 1);
+        assert_eq!(all["outgoing:/outgoing:question:publish"].total, 3);
+        assert_eq!(all["outgoing:/outgoing:question:publish"].failure, 0);
+        assert_eq!(all["outgoing:/outgoing:question:ack_wait"].total, 2);
+        assert_eq!(all["outgoing:/outgoing:question:ack_wait"].failure, 1);
         use std::io::Read;
         let mut text = String::new();
         brz_metrics::PrometheusReader::new()
             .read_to_string(&mut text)
             .unwrap();
-        assert!(text.contains("brz_count_total{type=\"SOCKET_IO\",name=\"outgoing:9:/outgoing:8:question:ack_timeout\"} 1"));
+        assert!(text.contains(
+            "brz_count_total{type=\"SOCKET_IO\",name=\"outgoing:/outgoing:question:ack_timeout\"} 1"
+        ));
     }
     client.close().await;
     running.stop().await;

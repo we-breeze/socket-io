@@ -650,7 +650,7 @@ fn export(args: Export, function: &mut ItemFn, event: bool) -> syn::Result<Token
                         Ok(#server::__private::event_reply(value))
                     }.await;
                     __observation.finish(__result.is_ok());
-                    #server::__private::complete_event(&__socket_ref, __socket_ack, __result, __socket_metrics);
+                    #server::__private::complete_event(&__socket_ref, __socket_ack, __result, &__socket_metrics);
                 }
             }
         };
@@ -686,6 +686,7 @@ fn export(args: Export, function: &mut ItemFn, event: bool) -> syn::Result<Token
                 },
                 register: |__io, __socket_state, __socket_bindings, __socket_metrics| {
                     let __socket_bindings = ::std::sync::Arc::new(__socket_bindings);
+                    let __namespace_metrics = __socket_metrics.clone();
                     let middleware = move |__socket_input: #server::__private::ConnectInput<#group::Adapter>| {
                         let __socket_state = __socket_state.clone(); let __socket_bindings = __socket_bindings.clone();
                         async move {
@@ -698,14 +699,14 @@ fn export(args: Export, function: &mut ItemFn, event: bool) -> syn::Result<Token
                                 let __socket_ref = __socket_input.socket();
                                 __socket_bindings.bind(&__socket_ref, __socket_state.clone());
                                 let hook = __socket_bindings.disconnect(__socket_state.clone());
-                                #server::__private::prepare(&__socket_ref, __socket_identity, accept, __socket_metrics, hook);
+                                #server::__private::prepare(&__socket_ref, __socket_identity, accept, &__socket_metrics, hook);
                                 Ok(())
                             }.await;
                             __observation.finish(result.is_ok());
                             result
                         }
                     };
-                    __io.ns(#namespace, #server::__private::namespace_handler(middleware, __socket_metrics))
+                    __io.ns(#namespace, #server::__private::namespace_handler(middleware, __namespace_metrics))
                 },
             })
         }

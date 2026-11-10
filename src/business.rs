@@ -181,7 +181,7 @@ pub fn prepare<A: Adapter, S: Send + Sync + 'static>(
     socket: &SocketRef<A>,
     auth: Option<Identity>,
     accept: Accept<S>,
-    metrics: NamespaceMetrics,
+    metrics: &NamespaceMetrics,
     hook: Option<DisconnectHook>,
 ) {
     // Socket.IO sockets have a private room for addressed service emissions.
@@ -266,7 +266,7 @@ impl<M: Clone, T> Clone for PreparedNamespace<M, T> {
     fn clone(&self) -> Self {
         Self {
             middleware: self.middleware.clone(),
-            metrics: self.metrics,
+            metrics: self.metrics.clone(),
             marker: PhantomData,
         }
     }
@@ -337,7 +337,7 @@ fn apply<A: Adapter>(socket: &SocketRef<A>, actions: Vec<RoomAction>) {
 fn apply_reply<A: Adapter, T>(
     socket: &SocketRef<A>,
     reply: Reply<T>,
-    metrics: EventMetrics,
+    metrics: &EventMetrics,
 ) -> Result<T, ClientError> {
     let state = stored(socket)?;
     // Serialize framework mutations with teardown; a handler finishing after
@@ -357,7 +357,7 @@ pub fn complete_event<A: Adapter, T: Serialize>(
     socket: &SocketRef<A>,
     ack: AckContext<A>,
     mut result: Result<Reply<T>, ClientError>,
-    metrics: EventMetrics,
+    metrics: &EventMetrics,
 ) {
     let payload_ack = result.as_ref().is_ok_and(|reply| reply.payload_ack);
     let after_reply = result

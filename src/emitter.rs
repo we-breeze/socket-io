@@ -44,7 +44,7 @@ impl<A: Adapter> Clone for EventEmitter<A> {
             namespace: self.namespace,
             event: self.event,
             rooms: self.rooms.clone(),
-            metrics: self.metrics,
+            metrics: self.metrics.clone(),
         }
     }
 }
